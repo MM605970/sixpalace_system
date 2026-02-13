@@ -268,15 +268,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // 1. 获取当前道具（使用 String 强制转换确保 ID 匹配成功）
     const item = items.find(i => String(i.id) === String(itemId));
     
-    // 【调试日志】如果控制台没打印这个，说明 ID 传错了
-    console.log("当前尝试使用的道具详情:", item);
-  
     if (!item) {
-      alert("内务府找不到该宝贝，请刷新重试。");
+      console.error("找不到道具 ID:", itemId);
       return;
     }
   
-    // 定义等级序列（请确保你的 profile 表里存的就是这些字，不能多空格）
+    // 等级序列（务必确保与数据库中存的字符完全一致，不带多余空格）
     const commonSequence = ['十等', '九等', '八等', '七等', '六等', '五等', '四等', '三等', '二等', '一等', '特等'];
     const familySequence = [
       '从九品', '正九品', '从八品', '正八品', '从七品', '正七品', 
@@ -285,8 +282,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     ];
   
     try {
-      // 2. 更新数据库：标记为已使用
-      // 注意：这里使用布尔值 true，如果你的数据库是 boolean 类型，这才是正确的
+      setIsLoading(true);
+  
+      // 第一步：在 inventory 表中标记道具已使用
       const { error: itemError } = await supabase
         .from('inventory')
         .update({ is_used: true }) 
@@ -294,115 +292,67 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   
       if (itemError) throw itemError;
   
-      // 3. 处理属性晋升
+      // 第二步：改写 profiles 档案表
       if (item.effectType && item.effectType !== 'none') {
-        // 这里的 key 必须对应 inventory 表里的 effect_type 字段值
         const fieldMapping: Record<string, string> = {
           'appearance': 'appearance',
           'constitution': 'constitution',
-          'family_rank': 'family_rank'
+          'family_rank': 'family_rank' // 确保这里对应数据库里的字段名
         };
         
         const dbField = fieldMapping[item.effectType];
   
         if (dbField) {
-          // 重新获取最新的档案，防止本地状态延迟
+          // 关键：直接从数据库拉取最准确的当前数值，不依赖缓存
           const { data: profile, error: fetchError } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', currentUser.id)
             .single();
   
-          if (fetchError || !profile) throw new Error("无法读取您的档案信息");
+          if (fetchError || !profile) throw new Error("无法读取档案");
   
-          // 获取当前数值，去掉可能存在的空格
-          const currentRank = profile[dbField] ? profile[dbField].trim() : null;
+          // 使用 .trim() 自动过滤数据库中可能存在的空格
+          const currentVal = profile[dbField] ? profile[dbField].trim() : null;
           
           let sequence = dbField === 'family_rank' ? familySequence : commonSequence;
           let defaultStart = dbField === 'family_rank' ? '从九品' : '十等';
   
-          const currentIndex = sequence.indexOf(currentRank || defaultStart);
-          let newValue = currentRank || defaultStart;
+          // 查找当前等级在序列中的位置
+          const currentIndex = sequence.indexOf(currentVal || defaultStart);
+          let newVal = currentVal || defaultStart;
   
           if (currentIndex !== -1 && currentIndex < sequence.length - 1) {
             // 向上晋升一级
-            newValue = sequence[currentIndex + 1];
+            newVal = sequence[currentIndex + 1];
           } else if (currentIndex === sequence.length - 1) {
-            alert(`内务府报：您的${item.effectType}已至化境，无需再提升。`);
+            alert(`内务府报：您的${item.effectType}已至化境，无需提升。`);
             await fetchData();
             return;
           }
   
-          // 4. 将新等级写入 profile 表
+          // 执行改写 profiles 表的操作
           const { error: updateError } = await supabase
             .from('profiles')
-            .update({ [dbField]: newValue })
+            .update({ [dbField]: newVal })
             .eq('id', currentUser.id);
   
           if (updateError) throw updateError;
           
-          alert(`✨ 功效显著！您的${item.effectType}已由【${currentRank || '无'}】提升至【${newValue}】。`);
+          alert(`✨ 功效显著！您的${item.effectType}已由【${currentVal || '无'}】提升至【${newVal}】。`);
         }
       }
   
-      // 5. 强制刷新所有数据，让页面感知到变化
+      // 第三步：强制重新拉取数据，更新前端显示
       await fetchData();
   
     } catch (err: any) {
-      console.error("使用失败详情:", err);
-      alert("系统由于“" + (err.message || "未知原因") + "”导致操作失败，请查验后台。");
+      console.error("操作异常:", err);
+      alert("内务府忙碌：" + (err.message || "未知错误"));
+    } finally {
+      setIsLoading(false);
     }
   };
-
-  const giftItem = async (itemId: number, recipientName: string) => {
-    if (!currentUser) return { success: false, message: '未登录' };
-
-    const { data: targetUser, error: findError } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('username', recipientName)
-      .single();
-
-    if (findError || !targetUser) return { success: false, message: '查无此人' };
-    if (targetUser.id === currentUser.id) return { success: false, message: '不可赠予自己' };
-
-    const { error } = await supabase
-      .from('inventory')
-      .update({ 
-        owner_id: targetUser.id,
-        from_user: currentUser.name 
-      })
-      .eq('id', itemId);
-
-    if (error) return { success: false, message: '赠送失败' };
-
-    await fetchData();
-    return { success: true, message: `已赠予 ${recipientName}` };
-  };
-
-  return (
-    <AppContext.Provider value={{
-      currentUser,
-      users,
-      transactions,
-      items,
-      isLoading,
-      login,
-      logout,
-      updateUser,
-      addUser,
-      distributeSalaries,
-      approveTransaction,
-      rejectTransaction,
-      grantItem, // 导出新增方法
-      requestExpense,
-      useItem,
-      giftItem
-    }}>
-      {children}
-    </AppContext.Provider>
-  );
-};
 
 export const useApp = () => {
   const context = useContext(AppContext);
