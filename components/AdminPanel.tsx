@@ -39,35 +39,31 @@ const AdminPanel: React.FC = () => {
                 <th className="p-3 text-right">余额</th>
               </tr>
             </thead>
-            <tbody className="text-stone-700 text-sm">
-              {memberList.map(user => (
-                <tr key={user.id} className="border-b border-stone-100 hover:bg-[#fcfaf2] transition">
-                  <td className="p-3 font-bold">{user.name}</td>
-                  <td className="p-3">
-                    <span className="bg-stone-100 px-2 py-0.5 rounded text-xs border border-stone-200">
-                      {user.rank}
-                    </span>
-                  </td>
-                  <td className="p-3 text-xs">{user.familyRank}</td>
-                  {/* 容貌展示：带特定颜色标识 */}
-                  <td className="p-3">
-                    <span className="text-pink-700 font-medium">
-                      ✨ {user.appearance || '未定'}
-                    </span>
-                  </td>
-                  {/* 体质展示：带特定颜色标识 */}
-                  <td className="p-3">
-                    <span className="text-emerald-700 font-medium">
-                      🌿 {user.constitution || '未定'}
-                    </span>
-                  </td>
-                  <td className="p-3 text-right font-mono text-[#8b4513] font-bold">
-                    {user.balance.toFixed(1)} 两
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+              <tbody className="text-stone-700 text-sm">
+                {memberList.map(user => (
+                  <tr key={user.id} className="border-b border-stone-100 hover:bg-[#fcfaf2] transition">
+                    <td className="p-3 font-bold">{user.name}</td>
+                    {/* 显示 6 位身份码 */}
+                    <td className="p-3 font-mono text-xs text-stone-500">{user.shortId}</td> 
+                    <td className="p-3">
+                      <span className="bg-stone-100 px-2 py-0.5 rounded text-xs border border-stone-200">
+                        {user.rank}
+                      </span>
+                    </td>
+                    <td className="p-3 text-xs">{user.familyRank}</td>
+                    <td className="p-3">
+                      <span className="text-pink-700 font-medium">✨ {user.appearance || '未定'}</span>
+                    </td>
+                    <td className="p-3">
+                      <span className="text-emerald-700 font-medium">🌿 {user.constitution || '未定'}</span>
+                    </td>
+                    <td className="p-3 text-right font-mono text-[#8b4513] font-bold">
+                      {user.balance.toFixed(1)} 两
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
         </div>
       </div>
 
