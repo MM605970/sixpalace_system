@@ -265,12 +265,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const useItem = async (itemId: number) => {
     if (!currentUser) return;
     
-    // 1. 找到该道具详情
     const item = items.find(i => i.id === itemId);
     if (!item) return;
   
+    // 1. 定义：容貌与体质的等级序列（从低到高）
+    const commonSequence = [
+      '十等', '九等', '八等', '七等', '六等', '五等', '四等', '三等', '二等', '一等', '特等'
+    ];
+  
+    // 2. 定义：家世等级序列（从低到高，涵盖从九品至正一品）
+    const familySequence = [
+      '从九品', '正九品', '从八品', '正八品', '从七品', '正七品', 
+      '从六品', '正六品', '从五品', '正五品', '从四品', '正四品', 
+      '从三品', '正三品', '从二品', '正二品', '从一品', '正一品', '国公/公侯'
+    ];
+  
     try {
-      // 2. 将道具标记为已使用
+      // 标记道具已消耗
       const { error: itemError } = await supabase
         .from('inventory')
         .update({ is_used: true })
@@ -278,49 +289,62 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   
       if (itemError) throw itemError;
   
-      // 3. 处理属性变更逻辑
-      // 如果属性是文本等级（如“三等”），直接增加数值比较复杂。
-      // 这里我们采用最直接的方案：如果道具带有数值，就更新对应的字段
       if (item.effectType && item.effectType !== 'none') {
-        
-        // 获取当前用户的属性值
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', currentUser.id)
-          .single();
+        const fieldMapping: Record<string, string> = {
+          'appearance': 'appearance',
+          'constitution': 'constitution',
+          'family_rank': 'family_rank'
+        };
+        const dbField = fieldMapping[item.effectType];
   
-        if (profile) {
-          let updateData: any = {};
-          const fieldName = item.effectType === 'family_rank' ? 'family_rank' : item.effectType;
-          
-          // 逻辑 A：如果你的字段是纯数字，直接相加
-          // 逻辑 B：如果是“三等”这种字符串，我们这里演示将其直接替换或拼接（建议你后续将数据库字段改为数字）
-          // 目前为了“有反应”，我们假设你填入的是想要变更后的新等级字符串，或者简单的数值加减
-          
-          // 示例：简单数值替换逻辑
-          const currentValue = profile[fieldName] || 0;
-          // 如果是数字则累加，如果是字符串则提示（或者你可以在此处写复杂的等级转换逻辑）
-          const newValue = typeof currentValue === 'number' ? currentValue + item.effectValue : item.effectValue;
-  
-          updateData[fieldName] = newValue;
-  
-          const { error: profileError } = await supabase
+        if (dbField) {
+          // 获取当前档案
+          const { data: profile } = await supabase
             .from('profiles')
-            .update(updateData)
-            .eq('id', currentUser.id);
+            .select('*')
+            .eq('id', currentUser.id)
+            .single();
   
-          if (profileError) throw profileError;
-          alert(`使用成功！你的${fieldName}已更新。`);
+          if (profile) {
+            // --- 核心逻辑分支：选择对应的序列 ---
+            const currentRank = profile[dbField];
+            let sequence = commonSequence; // 默认使用通用序列
+            let defaultStart = '十等';
+  
+            if (dbField === 'family_rank') {
+              sequence = familySequence; // 如果是家世，切换到品级序列
+              defaultStart = '从九品';
+            }
+  
+            const currentIndex = sequence.indexOf(currentRank || defaultStart);
+            let newValue = currentRank || defaultStart;
+  
+            // 执行晋升
+            if (currentIndex !== -1 && currentIndex < sequence.length - 1) {
+              newValue = sequence[currentIndex + 1];
+            } else if (currentIndex === sequence.length - 1) {
+              alert(`内务府报：该项数值已达顶峰（${currentRank}），无需再用。`);
+              return;
+            }
+  
+            // 更新数据库
+            const { error: updateError } = await supabase
+              .from('profiles')
+              .update({ [dbField]: newValue })
+              .eq('id', currentUser.id);
+  
+            if (updateError) throw updateError;
+            
+            alert(`✨ 使用成功！【${item.item_name}】功效显著，您的${item.effectType}已由【${currentRank}】提升至【${newValue}】。`);
+          }
         }
       }
   
-      // 4. 刷新全局数据，让界面立刻看到数值变化
-      await fetchData();
+      await fetchData(); // 实时刷新名册
   
     } catch (err) {
-      console.error("使用道具失败:", err);
-      alert("内务府处理失败，请稍后再试。");
+      console.error("道具生效失败:", err);
+      alert("内务府忙碌，请稍后再试。");
     }
   };
 
