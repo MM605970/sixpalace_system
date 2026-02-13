@@ -262,18 +262,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (!error) await fetchData();
   };
 
-  const useItem = async (itemId: number) => {
+  const useItem = async (itemId: number | string) => {
     if (!currentUser) return;
+  
+    // 1. 获取当前道具（使用 String 强制转换确保 ID 匹配成功）
+    const item = items.find(i => String(i.id) === String(itemId));
     
-    const item = items.find(i => i.id === itemId);
-    if (!item) return;
+    // 【调试日志】如果控制台没打印这个，说明 ID 传错了
+    console.log("当前尝试使用的道具详情:", item);
   
-    // 1. 定义：容貌与体质的等级序列（从低到高）
-    const commonSequence = [
-      '十等', '九等', '八等', '七等', '六等', '五等', '四等', '三等', '二等', '一等', '特等'
-    ];
+    if (!item) {
+      alert("内务府找不到该宝贝，请刷新重试。");
+      return;
+    }
   
-    // 2. 定义：家世等级序列（从低到高，涵盖从九品至正一品）
+    // 定义等级序列（请确保你的 profile 表里存的就是这些字，不能多空格）
+    const commonSequence = ['十等', '九等', '八等', '七等', '六等', '五等', '四等', '三等', '二等', '一等', '特等'];
     const familySequence = [
       '从九品', '正九品', '从八品', '正八品', '从七品', '正七品', 
       '从六品', '正六品', '从五品', '正五品', '从四品', '正四品', 
@@ -281,70 +285,72 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     ];
   
     try {
-      // 标记道具已消耗
+      // 2. 更新数据库：标记为已使用
+      // 注意：这里使用布尔值 true，如果你的数据库是 boolean 类型，这才是正确的
       const { error: itemError } = await supabase
         .from('inventory')
-        .update({ is_used: true })
-        .eq('id', itemId);
+        .update({ is_used: true }) 
+        .eq('id', item.id);
   
       if (itemError) throw itemError;
   
+      // 3. 处理属性晋升
       if (item.effectType && item.effectType !== 'none') {
+        // 这里的 key 必须对应 inventory 表里的 effect_type 字段值
         const fieldMapping: Record<string, string> = {
           'appearance': 'appearance',
           'constitution': 'constitution',
           'family_rank': 'family_rank'
         };
+        
         const dbField = fieldMapping[item.effectType];
   
         if (dbField) {
-          // 获取当前档案
-          const { data: profile } = await supabase
+          // 重新获取最新的档案，防止本地状态延迟
+          const { data: profile, error: fetchError } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', currentUser.id)
             .single();
   
-          if (profile) {
-            // --- 核心逻辑分支：选择对应的序列 ---
-            const currentRank = profile[dbField];
-            let sequence = commonSequence; // 默认使用通用序列
-            let defaultStart = '十等';
+          if (fetchError || !profile) throw new Error("无法读取您的档案信息");
   
-            if (dbField === 'family_rank') {
-              sequence = familySequence; // 如果是家世，切换到品级序列
-              defaultStart = '从九品';
-            }
+          // 获取当前数值，去掉可能存在的空格
+          const currentRank = profile[dbField] ? profile[dbField].trim() : null;
+          
+          let sequence = dbField === 'family_rank' ? familySequence : commonSequence;
+          let defaultStart = dbField === 'family_rank' ? '从九品' : '十等';
   
-            const currentIndex = sequence.indexOf(currentRank || defaultStart);
-            let newValue = currentRank || defaultStart;
+          const currentIndex = sequence.indexOf(currentRank || defaultStart);
+          let newValue = currentRank || defaultStart;
   
-            // 执行晋升
-            if (currentIndex !== -1 && currentIndex < sequence.length - 1) {
-              newValue = sequence[currentIndex + 1];
-            } else if (currentIndex === sequence.length - 1) {
-              alert(`内务府报：该项数值已达顶峰（${currentRank}），无需再用。`);
-              return;
-            }
-  
-            // 更新数据库
-            const { error: updateError } = await supabase
-              .from('profiles')
-              .update({ [dbField]: newValue })
-              .eq('id', currentUser.id);
-  
-            if (updateError) throw updateError;
-            
-            alert(`✨ 使用成功！【${item.item_name}】功效显著，您的${item.effectType}已由【${currentRank}】提升至【${newValue}】。`);
+          if (currentIndex !== -1 && currentIndex < sequence.length - 1) {
+            // 向上晋升一级
+            newValue = sequence[currentIndex + 1];
+          } else if (currentIndex === sequence.length - 1) {
+            alert(`内务府报：您的${item.effectType}已至化境，无需再提升。`);
+            await fetchData();
+            return;
           }
+  
+          // 4. 将新等级写入 profile 表
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ [dbField]: newValue })
+            .eq('id', currentUser.id);
+  
+          if (updateError) throw updateError;
+          
+          alert(`✨ 功效显著！您的${item.effectType}已由【${currentRank || '无'}】提升至【${newValue}】。`);
         }
       }
   
-      await fetchData(); // 实时刷新名册
+      // 5. 强制刷新所有数据，让页面感知到变化
+      await fetchData();
   
-    } catch (err) {
-      console.error("道具生效失败:", err);
-      alert("内务府忙碌，请稍后再试。");
+    } catch (err: any) {
+      console.error("使用失败详情:", err);
+      alert("系统由于“" + (err.message || "未知原因") + "”导致操作失败，请查验后台。");
     }
   };
 
