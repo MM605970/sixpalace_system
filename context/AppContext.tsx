@@ -264,12 +264,64 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const useItem = async (itemId: number) => {
     if (!currentUser) return;
-    const { error: itemError } = await supabase
-      .from('inventory')
-      .update({ is_used: true })
-      .eq('id', itemId);
-
-    if (!itemError) await fetchData();
+    
+    // 1. 找到该道具详情
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+  
+    try {
+      // 2. 将道具标记为已使用
+      const { error: itemError } = await supabase
+        .from('inventory')
+        .update({ is_used: true })
+        .eq('id', itemId);
+  
+      if (itemError) throw itemError;
+  
+      // 3. 处理属性变更逻辑
+      // 如果属性是文本等级（如“三等”），直接增加数值比较复杂。
+      // 这里我们采用最直接的方案：如果道具带有数值，就更新对应的字段
+      if (item.effectType && item.effectType !== 'none') {
+        
+        // 获取当前用户的属性值
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', currentUser.id)
+          .single();
+  
+        if (profile) {
+          let updateData: any = {};
+          const fieldName = item.effectType === 'family_rank' ? 'family_rank' : item.effectType;
+          
+          // 逻辑 A：如果你的字段是纯数字，直接相加
+          // 逻辑 B：如果是“三等”这种字符串，我们这里演示将其直接替换或拼接（建议你后续将数据库字段改为数字）
+          // 目前为了“有反应”，我们假设你填入的是想要变更后的新等级字符串，或者简单的数值加减
+          
+          // 示例：简单数值替换逻辑
+          const currentValue = profile[fieldName] || 0;
+          // 如果是数字则累加，如果是字符串则提示（或者你可以在此处写复杂的等级转换逻辑）
+          const newValue = typeof currentValue === 'number' ? currentValue + item.effectValue : item.effectValue;
+  
+          updateData[fieldName] = newValue;
+  
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .update(updateData)
+            .eq('id', currentUser.id);
+  
+          if (profileError) throw profileError;
+          alert(`使用成功！你的${fieldName}已更新。`);
+        }
+      }
+  
+      // 4. 刷新全局数据，让界面立刻看到数值变化
+      await fetchData();
+  
+    } catch (err) {
+      console.error("使用道具失败:", err);
+      alert("内务府处理失败，请稍后再试。");
+    }
   };
 
   const giftItem = async (itemId: number, recipientName: string) => {
