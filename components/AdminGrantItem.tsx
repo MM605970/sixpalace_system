@@ -72,6 +72,7 @@ export const AdminGrantItem: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-2 gap-4">
+
           {/* 3. 属性类型 */}
           <div>
             <label className="block text-sm font-bold text-[#8b4513] mb-1">提升属性</label>
@@ -82,6 +83,7 @@ export const AdminGrantItem: React.FC = () => {
             >
               <option value="appearance">容貌</option>
               <option value="constitution">体质</option>
+              <option value="family_rank">家世</option> {/* 新增家世选项 */}
               <option value="none">其他</option>
             </select>
           </div>
