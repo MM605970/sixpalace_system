@@ -31,10 +31,11 @@ const AdminPanel: React.FC = () => {
             <thead>
               <tr className="bg-[#fcfaf2] border-b border-[#d6d3d1] text-[#8b4513] text-sm">
                 <th className="p-3">姓名</th>
+                <th className="p-3">身份码 (ID)</th> 
                 <th className="p-3">位分</th>
                 <th className="p-3">家世</th>
-                <th className="p-3">容貌</th> {/* 新增 */}
-                <th className="p-3">体质</th> {/* 新增 */}
+                <th className="p-3">容貌</th> 
+                <th className="p-3">体质</th> 
                 <th className="p-3 text-right">余额</th>
               </tr>
             </thead>
